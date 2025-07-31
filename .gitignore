@@ -1,2 +1,22 @@
-.ipynb_checkpoints
+# Ignora caches e arquivos temporários
+**/__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
 .Trash-0
+
+# Ambientes virtuais
+venv/
+.env/
+.envrc
+.venv/
+
+# Arquivos de log
+*.log
+
+# Arquivos do Jupyter
+.ipynb_checkpoints/
+
+# Diretórios temporários
+tmp/
+temp/
