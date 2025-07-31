@@ -1,0 +1,117 @@
+services:
+
+  spark-master:
+      build:
+        context: .
+        dockerfile: Dockerfile.spark
+      container_name: spark-master
+      ports:
+        - "8080:8080"
+        - "4040:4040"
+      command: bin/spark-class org.apache.spark.deploy.master.Master
+      volumes:
+        - spark-events:/opt/spark/events
+      networks:
+        - env_dev
+
+  spark-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.spark
+    environment:
+      - SPARK_MODE=worker
+      - SPARK_MASTER_URL=spark://spark-master:7077
+      - SPARK_SSL_ENABLED=no
+      - SPARK_WORKER_MEMORY=2G
+      - SPARK_WORKER_CORES=4
+    command: >
+      -c "chmod -R 777 /opt/spark/events && bin/spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077"
+    networks:
+      - env_dev
+    volumes:
+      - spark-events:/opt/spark/events
+    deploy:
+      replicas: 2
+
+
+  spark-history-server:
+    build:
+      context: .
+      dockerfile: Dockerfile.spark
+    entrypoint: /bin/bash
+    command: -c "/opt/spark/sbin/start-history-server.sh; tail -f /dev/null"
+    ports:
+      - "18080:18080"
+    volumes:
+      - spark-events:/opt/spark/events 
+    networks:
+      - env_dev
+    user: root
+
+  minio:
+    container_name: minio
+    image: minio/minio:latest
+    environment:
+      - MINIO_ROOT_USER=${MINIO_ROOT_USER}
+      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD}
+    volumes:
+      - minio-data:/data
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    command: server /data --console-address ":9001"
+    networks:
+      - env_dev
+
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      - minio
+    entrypoint: >
+      /bin/sh -c "
+        echo 'Aguardando o MinIO...';
+        sleep 10;
+        mc alias set myminio http://minio:9000 ${MINIO_ROOT_USER} ${MINIO_ROOT_PASSWORD} &&
+        mc mb -p myminio/bronze &&
+        mc mb -p myminio/silver &&
+        mc mb -p myminio/gold &&
+        echo 'Buckets criados com sucesso!'
+      "
+    networks:
+      - env_dev
+
+  pyspark-jupyter:
+    build:
+      context: .
+      dockerfile: Dockerfile.jupyter
+    ports:
+        - 8888:8888
+    volumes:
+        - ./notebooks:/home/jupyter/notebooks
+        - spark-events:/opt/spark/events 
+    networks:
+      - env_dev
+
+  dw:
+    image: postgres:15
+    container_name: spark-postgres
+    restart: always
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - env_dev
+
+networks:
+  env_dev:
+
+
+volumes:
+  spark-events:
+  minio-data:
+  pgdata:
